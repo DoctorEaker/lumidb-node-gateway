@@ -22,7 +22,17 @@ export default class GatewayController {
     return await QuorumService.insertValue(key, value)
   }
 
-  public async update({}: HttpContextContract) {}
+  public async update({params, request}: HttpContextContract) {
+    let key = params.id
+    let value = request.all().value
+    let index = request.all().index
+    return await QuorumService.updateValue(key,index,value)
+  }
 
-  public async destroy({}: HttpContextContract) {}
+  public async destroy({params, request}: HttpContextContract) {
+    let key = params.id
+    let index = request.all().index
+
+    return await QuorumService.deleteValue(key, index)
+  }
 }

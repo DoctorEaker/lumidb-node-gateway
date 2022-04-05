@@ -38,6 +38,21 @@ export default class QuorumService implements QuorumServiceInterface {
         return await this.handleRequest(key, method, url, data)
     }
 
+  public async updateValue(key:string, index: number, value: string){
+    let url = '/key/' + key + '/values/' + index
+    let method: Method = 'put'
+    let data = {
+      value:value
+    }
+    return await this.handleRequest(key, method, url, data)
+  }
+
+  public async deleteValue(key:string, index:number){
+    let url = '/key/' + key + '/values/' + index
+    let method: Method = 'delete'
+    return await this.handleRequest(key, method, url)
+  }
+
     private async handleRequest(key: string, method: Method, url: string, params?: object) {
         let quorum = await this.makeQuorum()
         let nodeWithLatestVersion = await this.getNodeWithLatestKeyVersion(key, quorum)

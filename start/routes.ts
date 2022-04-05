@@ -26,3 +26,7 @@ Route.get('/', 'GatewayController.index')
 Route.get('/:id', 'GatewayController.show')
 
 Route.post('/:id', 'GatewayController.edit')
+
+Route.put('/:id', 'GatewayController.update')
+
+Route.delete('/:id', 'GatewayController.destroy')
