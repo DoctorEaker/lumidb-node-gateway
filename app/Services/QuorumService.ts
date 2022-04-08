@@ -4,19 +4,24 @@ import axios, { Method } from 'axios'
 
 export default class QuorumService implements QuorumServiceInterface {
     private addresses: [string]
+    private writeQuorum: [string]
+    private readQuorum: [string]
 
     constructor() {
-        this.addresses = Array() as [string];
+        this.addresses = Array() as [string]
         this.addresses.push(Env.get('NODE1'))
         this.addresses.push(Env.get('NODE2'))
         this.addresses.push(Env.get('NODE3'))
         this.addresses.push(Env.get('NODE4'))
         this.addresses.push(Env.get('NODE5'))
+
+        this.writeQuorum = this.addresses.slice(0, 3) as [string]
+        this.readQuorum = this.addresses.slice(3, 0) as [string]
     }
 
     public async get() {
         //return await this.getHealthyNodes()
-        return await this.getNodeWithLatestKeyVersion('spells', await this.makeQuorum())
+      return await this.getNodeWithLatestKeyVersion('spells', await this.getHealthyNodes())
 
         // return await axios.get(Env.get('NODE1')).then(resp=> {
         //   return resp.data
@@ -38,23 +43,24 @@ export default class QuorumService implements QuorumServiceInterface {
         return await this.handleRequest(key, method, url, data)
     }
 
-  public async updateValue(key:string, index: number, value: string){
-    let url = '/key/' + key + '/values/' + index
-    let method: Method = 'put'
-    let data = {
-      value:value
+    public async updateValue(key: string, index: number, value: string) {
+        let url = '/key/' + key + '/values/' + index
+        let method: Method = 'put'
+        let data = {
+            value: value
+        }
+        return await this.handleRequest(key, method, url, data)
     }
-    return await this.handleRequest(key, method, url, data)
-  }
 
-  public async deleteValue(key:string, index:number){
-    let url = '/key/' + key + '/values/' + index
-    let method: Method = 'delete'
-    return await this.handleRequest(key, method, url)
-  }
+    public async deleteValue(key: string, index: number) {
+        let url = '/key/' + key + '/values/' + index
+        let method: Method = 'delete'
+        return await this.handleRequest(key, method, url)
+    }
 
     private async handleRequest(key: string, method: Method, url: string, params?: object) {
-        let quorum = await this.makeQuorum()
+        let quorum = await this.makeQuorum(method)
+
         let nodeWithLatestVersion = await this.getNodeWithLatestKeyVersion(key, quorum)
         params = params == undefined ? {} : params
         let response = await axios(
@@ -66,15 +72,18 @@ export default class QuorumService implements QuorumServiceInterface {
         ).then(resp => {
             return resp.data
         })
-        if (method != 'get') {
-            let indexToRemove = quorum.indexOf(nodeWithLatestVersion)
-            quorum.splice(indexToRemove, 1)
-            await this.syncNodes(key, nodeWithLatestVersion, quorum)
-        }
+
+        let sync = {}
+
+        let indexToRemove = quorum.indexOf(nodeWithLatestVersion)
+        quorum.splice(indexToRemove, 1)
+        sync = await this.syncNodes(key, nodeWithLatestVersion, quorum)
+
         return {
             response: response,
             nodeWithLatestVersion: nodeWithLatestVersion,
-            quorum: quorum
+            quorum: quorum,
+            sync: sync
         }
     }
 
@@ -88,6 +97,12 @@ export default class QuorumService implements QuorumServiceInterface {
             return response.data.version
         })
 
+        let res = {
+            node: nodeWithLatestVersion,
+            latest: latestValue,
+            version: version,
+            nodes: Array() as [object]
+        }
 
         await Promise.all(nodes.map(node => axios({
             method: 'put',
@@ -96,7 +111,12 @@ export default class QuorumService implements QuorumServiceInterface {
                 values: latestValue,
                 version: version
             }
-        }).then(resp => console.log(resp.data))))
+        }).then(resp => res.nodes.push({
+            node: node,
+            response: resp.data
+        }))))
+
+        return res
 
     }
 
@@ -111,7 +131,26 @@ export default class QuorumService implements QuorumServiceInterface {
         return healthyNodes
     }
 
-    private async makeQuorum() {
+    private async makeQuorum(method: Method) {
+
+        let healthyNodes = await this.getHealthyNodes()
+        let numberOfNodes = healthyNodes.length
+        let quorumSize = Math.trunc(numberOfNodes / 2) + 1
+        let quorumMembers = Array() as [string]
+
+        if (method != 'get') {
+            quorumMembers = healthyNodes.slice(0, quorumSize) as [string]
+            this.writeQuorum = quorumMembers
+        } else {
+            quorumMembers = healthyNodes.slice(quorumSize - 1) as [string]
+            this.readQuorum = quorumMembers
+        }
+
+        return quorumMembers
+
+    }
+
+    private async makeRandomQuorum() {
         let healthyNodes = this.shuffleNodes(await this.getHealthyNodes())
         let numberOfNodes = healthyNodes.length
         let quorumSize = Math.trunc(numberOfNodes / 2) + 1
@@ -153,6 +192,13 @@ export default class QuorumService implements QuorumServiceInterface {
                     max = response.data.version
                     nodeWithLatestVersion = node
                 }
+
+                console.log({
+                    max: max,
+                    currentMaxNode: nodeWithLatestVersion,
+                    node: node,
+                    nodeVersion: response.data.version
+                })
 
             }
             )
